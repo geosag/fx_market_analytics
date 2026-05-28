@@ -249,13 +249,13 @@ def main(connection):
 #########################################
 #----------------------------------------
 if __name__ == "__main__":
-    # logging--------------------------------
+    # get the current timestamp--------------
     timestamp = datetime.now()
-    filename = os.path.expanduser(f"~/logs/currencies_{timestamp.strftime('%Y-%m-%d_%H.%M.%S')}.log")
+    # logging--------------------------------
     logging.basicConfig(
-        filename = filename,
         level = logging.INFO,
         format = "%(asctime)s - %(levelname)s - %(message)s"
+        handlers = [logging.StreamHandler(sys.stdout)] #logs streamed directly to GitHub Actions console
     )
     connection_string = os.getenv("CONNECTION_STRING")
     if connection_string:
