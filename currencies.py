@@ -254,7 +254,7 @@ if __name__ == "__main__":
     # logging--------------------------------
     logging.basicConfig(
         level = logging.INFO,
-        format = "%(asctime)s - %(levelname)s - %(message)s"
+        format = "%(asctime)s - %(levelname)s - %(message)s",
         handlers = [logging.StreamHandler(sys.stdout)] #logs streamed directly to GitHub Actions console
     )
     connection_string = os.getenv("CONNECTION_STRING")
