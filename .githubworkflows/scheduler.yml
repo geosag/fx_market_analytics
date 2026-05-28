@@ -1,0 +1,27 @@
+name: currencies
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Scheduled every day at 00:00 UTC --> (02:00 or 03:00 Greece time depending on the season)
+  workflow_dispatch:     # To allow manual triggering of the workflow
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run script
+        run: python currencies.py
+        env:
+          CONNECTION_STRING: ${{secrets.CONNECTION_STRING}}
