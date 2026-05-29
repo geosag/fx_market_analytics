@@ -173,8 +173,7 @@ def main(connection):
         time_interval = '1 month'
     else:
         # delete everything from daily or weekly data and fetch fresh
-        query_db(text(f"DELETE FROM {table};"),
-                 {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
+        query_db(text(f"DELETE FROM {table};"), {}, connection)
         starting_date = date.today() - relativedelta(years = 5) # starting_date = current date - 5 years
         if data_type == 'weekly':
             group = "&group=week"
@@ -185,6 +184,7 @@ def main(connection):
     for i, currency in enumerate(valid_currencies):
         rows_inserted = 0 # rows to be inserted in the current iteration
         base_currency = currency # define current base currency
+        print(base_currency)
         quote_currencies = ','.join(valid_currencies[:i] + valid_currencies[(i + 1):]) # modify valid_currencies to be used as a variable in the upcoming get request
         fetching_dates, quote_currencies_list = return_fetching_dates(base_currency, starting_date, connection, table, time_interval)
         for fetching_date in fetching_dates:
@@ -197,6 +197,9 @@ def main(connection):
                 items_list = []
                 data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
                 if len(data) > 0:
+                    print(base_currency)
+                    print(from_date)
+                    print(to_date)
                     # delete possible gaps in the dates of the data or dates the have < 4 quote currencies inserted per base currency
                     query_db(text(f"DELETE FROM {table} WHERE base_currency = :base_currency AND date_recorded BETWEEN :retrieved_date_min AND :retrieved_date_max;"),
                              {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
