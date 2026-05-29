@@ -193,12 +193,16 @@ def main(connection):
             while True:
                 items_list = []
                 data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
-                if len(data) > 0:
+                matching_data = []
+                for item in data:
+                    if from_date <= item['date_recorded'] <= to_date:
+                        matching_data.append(item)
+                if len(matching_data) > 0:
                     # delete possible gaps in the dates of the data or dates the have < 4 quote currencies inserted per base currency
                     query_db(text(f"DELETE FROM {table} WHERE base_currency = :base_currency AND date_recorded BETWEEN :retrieved_date_min AND :retrieved_date_max;"),
                              {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
                     # using pandas to clean and validate data before inserting the data to table
-                    df_raw = pd.DataFrame(data)
+                    df_raw = pd.DataFrame(matching_data)
                     df_clean = clean_data(df_raw, base_currency, quote_currencies_list)
                     if from_date == to_date:
                         logging.info(f"Inserting data for {from_date}...")
