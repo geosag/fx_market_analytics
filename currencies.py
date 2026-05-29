@@ -164,25 +164,28 @@ def main(connection):
     global data_type
     total_rows = 0
     logging.info(f'Process started for {data_type} data!')
+    # define in which table the changes will be applied based on if it's historical data or not 
+    table = f'currencies_{data_type}_data'
+    # condition to return the proper dates that are to be requested to fill the relevant data tables for the currencies
+    if data_type == 'monthly':
+        starting_date = date(1999, 1, 1)
+        group = "&group=month"
+        time_interval = '1 month'
+    else:
+        # delete everything from daily or weekly data and fetch fresh
+        query_db(text(f"DELETE FROM {table};"),
+                 {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
+        starting_date = date.today() - relativedelta(years = 5) # starting_date = current date - 5 years
+        if data_type == 'weekly':
+            group = "&group=week"
+            time_interval = '1 week'
+        else:
+            group = ""
+            time_interval = '1 day'
     for i, currency in enumerate(valid_currencies):
         rows_inserted = 0 # rows to be inserted in the current iteration
         base_currency = currency # define current base currency
         quote_currencies = ','.join(valid_currencies[:i] + valid_currencies[(i + 1):]) # modify valid_currencies to be used as a variable in the upcoming get request
-        # condition to return the proper dates that are to be requested to fill the relevant data tables for the currencies
-        if data_type == 'monthly':
-            starting_date = date(1999, 1, 1)
-            group = "&group=month"
-            time_interval = '1 month'
-        else:
-            starting_date = date.today() - relativedelta(years = 5) # starting_date = current date - 5 years
-            if data_type == 'weekly':
-                group = "&group=week"
-                time_interval = '1 week'
-            else:
-                group = ""
-                time_interval = '1 day'
-        # define in which table the changes will be applied based on if it's historical data or not 
-        table = f'currencies_{data_type}_data'
         fetching_dates, quote_currencies_list = return_fetching_dates(base_currency, starting_date, connection, table, time_interval)
         for fetching_date in fetching_dates:
             from_date = fetching_date['date_min']
@@ -193,16 +196,12 @@ def main(connection):
             while True:
                 items_list = []
                 data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
-                matching_data = []
-                for item in data:
-                    if from_date <= datetime.strptime(item['date_recorded'], '%Y-%m-%d').date() <= to_date:
-                        matching_data.append(item)
-                if len(matching_data) > 0:
+                if len(data) > 0:
                     # delete possible gaps in the dates of the data or dates the have < 4 quote currencies inserted per base currency
                     query_db(text(f"DELETE FROM {table} WHERE base_currency = :base_currency AND date_recorded BETWEEN :retrieved_date_min AND :retrieved_date_max;"),
                              {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
                     # using pandas to clean and validate data before inserting the data to table
-                    df_raw = pd.DataFrame(matching_data)
+                    df_raw = pd.DataFrame(data)
                     df_clean = clean_data(df_raw, base_currency, quote_currencies_list)
                     if from_date == to_date:
                         logging.info(f"Inserting data for {from_date}...")
