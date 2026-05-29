@@ -195,7 +195,7 @@ def main(connection):
                 data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
                 matching_data = []
                 for item in data:
-                    if from_date <= item['date_recorded'] <= to_date:
+                    if from_date <= datetime.strptime(item['date_recorded'], '%Y-%m-%d').date() <= to_date:
                         matching_data.append(item)
                 if len(matching_data) > 0:
                     # delete possible gaps in the dates of the data or dates the have < 4 quote currencies inserted per base currency
