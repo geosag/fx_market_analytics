@@ -1,8 +1,8 @@
-name: currencies
+name: fetch_currency_rates
 
 on:
   schedule:
-    - cron: '0 0 * * *' #Scheduled daily on 00:00 UTC (02:00 or 03:00 Greece time depending on season)
+    - cron: '0 0 * * *' #Scheduled daily on 00:00 UTC (around 02:00 or 03:00 Greece time depending on season)
   workflow_dispatch:    #To allow manual trigerring of the workflow
 
 jobs:
@@ -24,4 +24,4 @@ jobs:
       - name: Run script
         run: python currencies.py
         env:
-          CONNECTION_STRING: ${{ secrets.CONNECTION_STRING }}
+          CONNECTION_STRING: ${{secrets.CONNECTION_STRING}}
