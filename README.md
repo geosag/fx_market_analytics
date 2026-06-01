@@ -8,7 +8,7 @@ A data pipeline and Power BI dashboard for monitoring and analyzing foreign exch
 
 ## Overview
 
-The pipeline fetches exchange rates for EUR, USD, GBP, JPY, and CNY at three granularities (daily, weekly, and monthly) and loads them into a Supabase (PostgreSQL) database. A GitHub Actions workflow runs the script automatically once per day. The Power BI dashboard connects to Supabase and is refreshed and updated every day, providing both a short-term and long-term analytical view of rate behavior. Although the pipeline fetches data for the monthly granularity for data going back to 1999-01-01 for all currencies, the calculations and the long-term analytical view provided in the dashboard go back to 2000-01-01, since there are no monthly rates between 1999-01-01 and 1999-12-31 for CNY (in contrast to the other currencies) for the selected provider.
+The pipeline fetches exchange rates for EUR, USD, GBP, JPY, and CNY at three granularities (daily, weekly, and monthly) and loads them into a Supabase (PostgreSQL) database using Python (requests, pandas, sqlalchemy). A GitHub Actions workflow runs the script automatically once per day, keeping the Power BI dashboard current with both a short-term and long-term analytical view of rate behavior. Although the pipeline fetches data for the monthly granularity going back to 1999-01-01 for all currencies, the calculations and long-term analytical view in the dashboard go back to 2000-01-01, since there are no monthly rates between 1999-01-01 and 1999-12-31 for CNY (in contrast to the other currencies) for the selected provider.
 
 ---
 
@@ -16,7 +16,7 @@ The pipeline fetches exchange rates for EUR, USD, GBP, JPY, and CNY at three gra
 
 Both pages are filtered by a global base currency slicer.
 
-**Page 1 — Overview**
+**Page 1 - Overview**
 
 * Table with latest rates, latest return, latest returns %, 5-year high/low, and current up/down streak for all quote currencies for the selected base
 * Line chart showing percentage change from the start of the selected (calendar) period:
@@ -25,14 +25,14 @@ Both pages are filtered by a global base currency slicer.
   * 5 years → downsampled weekly data
   * MAX → downsampled monthly data (back to 2000)
 
-**Page 2 — Insights**
+**Page 2 - Insights**
 
-*Recent behavior · 90-trading day window · Using daily data*
+*Recent behavior · 90-trading day correlation | 30-trading day volatility · daily data*
 
-* 90-day correlation matrix across all quote currencies
-* 30-day rolling volatility (%) column chart
+* Correlation matrix across all quote currencies
+* Rolling volatility (%) column chart
 
-*Long-term structure · since 2000 · Using downsampled monthly data*
+*Long-term structure · since 2000 · downsampled monthly data*
 
 * All-time high drawdown (%) chart per quote currency
 * Percentiles table per quote currency, highlighting their rank since 2000
@@ -43,7 +43,7 @@ Both pages are filtered by a global base currency slicer.
 
 ### Source
 
-[Frankfurter API](https://frankfurter.dev/) — free public API that requires no authentication, with source data provided by the European Central Bank.
+[Frankfurter API](https://frankfurter.dev/) - free public API that requires no authentication, with source data provided by the European Central Bank.
 
 ### Supabase tables
 
@@ -86,7 +86,7 @@ fx_market_analytics/
 ## Tech stack
 
 * Python - data fetching and pipeline
-* Frankfurter API — exchange rate data
+* Frankfurter API - exchange rate data
 * Supabase (PostgreSQL) - data storage
 * GitHub Actions - scheduled automation
 * Power BI - dashboard and visualization
