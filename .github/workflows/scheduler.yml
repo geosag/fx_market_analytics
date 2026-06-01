@@ -1,4 +1,4 @@
-name: fetch_currency_rates
+name: Daily FX Rate Fetching Workflow
 
 on:
   schedule:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -22,6 +22,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run script
-        run: python currencies.py
+        run: python fetch_currency_rates.py
         env:
           CONNECTION_STRING: ${{secrets.CONNECTION_STRING}}
