@@ -2,8 +2,8 @@ name: Daily FX Rate Fetching Workflow
 
 on:
   schedule:
-    - cron: '0 0 * * *' #Scheduled daily on 00:00 UTC (around 02:00 or 03:00 Greece time depending on season)
-  workflow_dispatch:    #To allow manual trigerring of the workflow
+    - cron: '0 18 * * *' #Scheduled daily on 18:00 UTC (around 20:00 or 21:00 Greece time depending on season)
+  workflow_dispatch:     #To allow manual trigerring of the workflow
 
 jobs:
   run-script:
