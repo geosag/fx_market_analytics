@@ -9,7 +9,6 @@ import logging
 import json
 import os
 import sys
-from dotenv import find_dotenv, load_dotenv
 #----------------------------------------
 ########## GLOBAL VARIABLES #############
 #----------------------------------------
