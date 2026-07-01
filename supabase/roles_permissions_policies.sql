@@ -3,10 +3,10 @@
 ------------------------------------------------------------------------------------
 
 -- Create role writer that will be assigned to the Python script
-CREATE ROLE writer WITH LOGIN PASSWORD -- + 'PASSWORD';
+-- CREATE ROLE writer WITH LOGIN PASSWORD + password;
 
 -- Create role reader that will be assigned to Power BI
-CREATE ROLE reader WITH LOGIN PASSWORD -- + 'PASSWORD';
+-- CREATE ROLE reader WITH LOGIN PASSWORD + password;
 
 ------------------------------------------------------------------------------------
 -- PERMISSIONS
