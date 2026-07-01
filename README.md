@@ -76,6 +76,11 @@ fx_market_analytics/
 ├── .github/
 │   └── workflows/
 │       └── scheduler.yml
+├── supabase/
+│   └── roles_permissions_policies.sql
+│   └── select_queries.sql
+│   └── tables_creation.sql
+├── .gitignore
 ├── fetch_currency_rates.py
 ├── requirements.txt
 └── README.md
