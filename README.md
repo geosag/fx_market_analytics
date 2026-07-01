@@ -2,7 +2,7 @@
 
 A data pipeline and Power BI dashboard for monitoring and analyzing foreign exchange (FX) rates across 5 major currencies. Rate data is fetched from the European Central Bank (ECB), stored in Supabase, and visualized in a 2-page interactive dashboard.
 
-📊 [**View the live dashboard →**](https://app.powerbi.com/view?r=eyJrIjoiNWY4OTM4ODQtYzE4ZS00ZDQ1LWE5ZjgtMTIyNTQ0Y2M0Zjc4IiwidCI6IjIyMzk4NzFkLTBmNmItNDQ4NS04ZjIzLTM1NmE0MzJlYzNmYiJ9)
+📊 [**View the live dashboard**](https://app.powerbi.com/view?r=eyJrIjoiNWY4OTM4ODQtYzE4ZS00ZDQ1LWE5ZjgtMTIyNTQ0Y2M0Zjc4IiwidCI6IjIyMzk4NzFkLTBmNmItNDQ4NS04ZjIzLTM1NmE0MzJlYzNmYiJ9)
 
 ---
 
