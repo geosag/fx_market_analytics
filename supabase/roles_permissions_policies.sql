@@ -2,11 +2,7 @@
 -- ROLE CREATION
 ------------------------------------------------------------------------------------
 
--- Create role writer that will be assigned to the backend script
-CREATE ROLE writer WITH LOGIN PASSWORD 'REMOVED'$;
-
--- Create role reader that will be assigned to Power BI
-CREATE ROLE reader WITH LOGIN PASSWORD 'REMOVED'$;
+-- Created roles writer and reader to be used from the Python script and Power BI respectively
 
 ------------------------------------------------------------------------------------
 -- PERMISSIONS
