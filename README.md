@@ -77,13 +77,249 @@ fx_market_analytics/
 │   └── workflows/
 │       └── scheduler.yml
 ├── supabase/
-│   └── roles_permissions_policies.sql
-│   └── select_queries.sql
+│   ├── roles_permissions_policies.sql
+│   ├── select_queries.sql
 │   └── tables_creation.sql
+├── data_model/
+│   └── PBI_model_view.png
 ├── .gitignore
 ├── fetch_currency_rates.py
 ├── requirements.txt
 └── README.md
+```
+
+## Key DAX Measures
+
+To power the financial insights on the dashboard, several complex DAX measures were created to handle rolling windows, statistical relationships, and historical performance tracking. Some of them include:
+
+**1. 90-Day Rolling Correlation Coefficient**
+Calculates the Pearson correlation coefficient dynamically between any two currency pairs over a 90-trading-day window, handling cross-filter context and row alignment within a matrix visual.
+
+```dax
+Correlation Coefficient = 
+    VAR _BaseCurrency = SELECTEDVALUE('DimBaseCurrencies'[base_currency])
+    VAR _CurrencyX = SELECTEDVALUE('QuoteCurrenciesMatrixX'[quote_currency])
+    VAR _CurrencyY = SELECTEDVALUE('QuoteCurrenciesMatrixY'[quote_currency])
+    VAR _ValidX = _CurrencyX <> _BaseCurrency
+    VAR _ValidY = _CurrencyY <> _BaseCurrency 
+    VAR _StartIndex = MAX('Currencies Daily Data'[Date Index]) - 90
+    VAR _StartDate = 
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Date Index] = _StartIndex + 1
+        )
+    VAR _BaseTableX =
+        CALCULATETABLE(
+                SUMMARIZE(
+                    'Currencies Daily Data',
+                    'Currencies Daily Data'[Date],
+                    "Rate", MAX('Currencies Daily Data'[Rate])
+                ),
+                TREATAS({_CurrencyX}, 'Currencies Daily Data'[Quote]),
+                'Currencies Daily Data'[Quote] <> _BaseCurrency,
+                'Currencies Daily Data'[Date] >= _StartDate
+        )
+    VAR _AlignedX =
+        SELECTCOLUMNS(
+            ADDCOLUMNS(
+                _BaseTableX,
+                "X",
+                    VAR _CurrentRate = [Rate]
+                    VAR _PreviousRate =
+                        MAXX(
+                            OFFSET(
+                                   -1, 
+                                   _BaseTableX, 
+                                   ORDERBY('Currencies Daily Data'[Date])
+                            ),
+                            [Rate]
+                        )
+                RETURN 
+                    DIVIDE(_CurrentRate - _PreviousRate, _PreviousRate)
+            ),
+            "date_recorded", 'Currencies Daily Data'[Date],
+            "X", [X]
+        )
+    VAR _BaseTableY =
+        CALCULATETABLE(
+                SUMMARIZE(
+                    'Currencies Daily Data',
+                    'Currencies Daily Data'[Date],
+                    "Rate", MAX('Currencies Daily Data'[Rate])
+                ),
+                TREATAS({_CurrencyY}, 'Currencies Daily Data'[Quote]),
+                'Currencies Daily Data'[Quote] <> _BaseCurrency,
+                'Currencies Daily Data'[Date] >= _StartDate
+        )
+    VAR _AlignedY =
+        SELECTCOLUMNS(
+            ADDCOLUMNS(
+                _BaseTableY,
+                "Y",
+                    VAR _CurrentRate = [Rate]
+                    VAR _PreviousRate =
+                        MAXX(
+                            OFFSET(
+                                   -1, 
+                                   _BaseTableY, 
+                                   ORDERBY('Currencies Daily Data'[Date])
+                            ),
+                            [Rate]
+                        )
+                RETURN 
+                    DIVIDE(_CurrentRate - _PreviousRate, _PreviousRate)
+            ),
+            "date_recorded", 'Currencies Daily Data'[Date],
+            "Y", [Y]
+        )
+    VAR _Combined =
+        NATURALINNERJOIN(
+            _AlignedX,
+            _AlignedY
+        )
+    
+    VAR n = COUNTROWS(_Combined)
+    VAR _SumX = SUMX(_Combined, [X])
+    VAR _SumY = SUMX(_Combined, [Y])
+    VAR _SumXY = SUMX(_Combined, [X] * [Y])
+    VAR _SumX2 = SUMX(_Combined, [X] * [X])
+    VAR _SumY2 = SUMX(_Combined, [Y] * [Y])
+
+    VAR _CorrelationCoefficient =
+        DIVIDE(
+            n * _SumXY - _SumX * _SumY,
+            SQRT(
+                (n * _SumX2 - _SumX * _SumX) *
+                (n * _SumY2 - _SumY * _SumY)
+            )
+        )
+RETURN
+    SWITCH(
+        TRUE(),
+        NOT _ValidX || NOT _ValidY, BLANK(),
+        _CurrencyX = _CurrencyY, 1,
+        ROUND(_CorrelationCoefficient, 2)
+    )
+```
+
+**2. All-Time High for Drawdown Calculation**
+Manipulates the filter context to isolate the historical maximum exchange rate up to the current date in the visual context (starting from 2000), serving as the baseline for calculating drawdowns (Used in the tooltip section of the visual).
+
+```dax
+Drawdown Chart Tooltip Max Rate = 
+    VAR _CurrentDate = SELECTEDVALUE('Currencies Monthly Data'[Date])
+    VAR _CurrentBase = SELECTEDVALUE('Currencies Monthly Data'[Base])
+    VAR _CurrentQuote = SELECTEDVALUE('Currencies Monthly Data'[Quote])
+    VAR _Result = 
+        CALCULATE(
+            MAX('QueryMonthly'[rate]),
+            FILTER(
+                ALL('QueryMonthly'),
+                'QueryMonthly'[date_recorded] >= DATE(2000,1,1) &&
+                'QueryMonthly'[date_recorded] <= _CurrentDate &&
+                'QueryMonthly'[base_currency] = _CurrentBase &&
+                'QueryMonthly'[quote_currency] = _CurrentQuote
+            )
+        )
+RETURN
+    _Result
+```
+
+**3. Current Up/Down Streak**
+Bypasses DAX's lack of native recursion by evaluating consecutive days of positive, negative, or flat returns using dynamic date filtering and table row counting.
+
+```dax
+_LatestReturns = 
+    VAR _PreviousDate =
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Date] < MAX('Currencies Daily Data'[Date])
+        )
+    VAR _PreviousRates =
+        CALCULATE(
+            MAX('Currencies Daily Data'[Rate]),
+            'Currencies Daily Data'[Date] = _PreviousDate
+        )
+    VAR _LatestReturns = [_LatestRates] - _PreviousRates
+RETURN
+    _LatestReturns
+
+Current Up/Down Streak = 
+    VAR _MaxDateNoChanges = 
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Daily Return] <> 0
+        )
+    VAR _MaxDatenegativeOrZeroReturn = 
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Daily Return] <= 0
+        )
+    VAR _MaxDatePositiveOrZeroReturn = 
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Daily Return] >= 0
+        )
+    VAR _Result =
+        SWITCH(
+            TRUE(),
+            [_LatestReturns] > 0, 
+            COUNTROWS(
+                FILTER(
+                    'Currencies Daily Data',
+                    'Currencies Daily Data'[Date] > _MaxDatenegativeOrZeroReturn
+                )
+            ),
+            [_LatestReturns] < 0, 
+            COUNTROWS(
+                FILTER(
+                    'Currencies Daily Data',
+                    'Currencies Daily Data'[Date] > _MaxDatePositiveOrZeroReturn
+                )
+            ), 
+            COUNTROWS(
+                FILTER(
+                    'Currencies Daily Data',
+                    'Currencies Daily Data'[Date] > _MaxDateNoChanges
+                )
+            )
+        )
+RETURN
+    SWITCH(
+        TRUE(),
+        [_LatestReturns] > 0, 
+        IF(_Result = 1, _Result & " Day Up Streak", _Result & " Days Up Streak"),
+        [_LatestReturns] < 0, 
+        IF(_Result = 1, _Result & " Day Down Streak", _Result & " Days Down Streak"),
+        IF(_Result = 1, _Result & " Day Of No Up/Down Changes", _Result & " Days Of No Up/Down Changes")
+    )
+```
+
+**4. 30-Day Rolling Volatility (%)**
+Leverages custom date index calculations to extract the standard deviation of daily returns strictly over the last 30 trading days.
+
+```dax
+30d_volatility = 
+    VAR _StartIndex = MAX('Currencies Daily Data'[Date Index]) - 30
+    VAR _StartDate = 
+        CALCULATE(
+            MAX('Currencies Daily Data'[Date]),
+            'Currencies Daily Data'[Date Index] = _StartIndex + 1
+        )
+    VAR _30dVolatility = 
+        CALCULATE(
+            STDEV.S('Currencies Daily Data'[Daily Return Percentage]),
+            DATESINPERIOD(
+            'Currencies Daily Data'[Date],
+            _StartDate, 
+            6, 
+            MONTH
+        )
+    )
+    VAR _30dVolatilityPercentage = _30dVolatility
+
+RETURN
+    _30dVolatilityPercentage
 ```
 
 ---
