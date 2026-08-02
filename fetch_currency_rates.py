@@ -78,30 +78,34 @@ def return_fetching_dates(base_currency, starting_date, connection, table, time_
     quote_currencies_list = []
     for i in range(len(valid_currencies)):
         if not valid_currencies[i] == base_currency:
-            quote_currencies_list.append(valid_currencies[i]) # quote currencies are all the other values left in the list besides currnt base currency
+            quote_currencies_list.append(valid_currencies[i]) # quote currencies are all the other values left in the list besides current base currency
     result = query_db(text(f"""
-                               SELECT MIN(date_recorded) AS date_min,
+                               SELECT CASE 
+                                         WHEN MIN(date_recorded) = MAX(date_recorded) AND :time_interval = '1 month' 
+                                           THEN (DATE_TRUNC('month', MIN(date_recorded)) - INTERVAL '1 month')::DATE
+                                         ELSE MIN(date_recorded)
+                                      END AS date_min,
                                       MAX(date_recorded) AS date_max
                                  FROM (
                                        SELECT x.*, SUM(i) OVER(ORDER BY date_recorded) AS grp
                                          FROM (
                                                SELECT t.*,
                                                       CASE WHEN date_recorded > LAG(date_recorded) OVER(order BY date_recorded) + INTERVAL :time_interval
-                                                           THEN 1 
+                                                             THEN 1 
                                                            ELSE 0 
-                                                       END AS i
-                                                 FROM (
-                                                       SELECT DATE(dates_recorded) AS date_recorded
-                                                         FROM generate_series(:starting_date, CURRENT_DATE, INTERVAL :time_interval) AS dates_recorded
-                                                        WHERE dates_recorded NOT IN (
-                                                                                     SELECT date_recorded
-                                                                                       FROM {table}
-                                                                                      WHERE base_currency = :base_currency
-                                                                                        AND quote_currency IN :quote_currencies_list
-                                                                                   GROUP BY date_recorded
-                                                                                     HAVING COUNT(*) = 4)) AS t
-                                                                                    ) AS x
-                                                      ) AS y
+                                                      END AS i
+                                                    FROM (
+                                                          SELECT DATE(dates_recorded) AS date_recorded
+                                                            FROM generate_series(:starting_date, CURRENT_DATE, INTERVAL :time_interval) AS dates_recorded
+                                                           WHERE dates_recorded NOT IN (
+                                                                                        SELECT date_recorded
+                                                                                          FROM {table}
+                                                                                         WHERE base_currency = :base_currency
+                                                                                           AND quote_currency IN :quote_currencies_list
+                                                                                      GROUP BY date_recorded
+                                                                                        HAVING COUNT(*) = 4)) AS t
+                                              ) AS x
+                                      ) AS y
                              GROUP BY grp
                              ORDER BY date_min;
                             """).bindparams(bindparam('quote_currencies_list', expanding = True)),
