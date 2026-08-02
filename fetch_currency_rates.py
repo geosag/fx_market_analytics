@@ -189,6 +189,7 @@ def main(connection):
         base_currency = currency # define current base currency
         quote_currencies = ','.join(valid_currencies[:i] + valid_currencies[(i + 1):]) # modify valid_currencies to be used as a variable in the upcoming get request
         fetching_dates, quote_currencies_list = return_fetching_dates(base_currency, starting_date, connection, table, time_interval)
+        print(fetching_dates) #debug
         for fetching_date in fetching_dates:
             from_date = fetching_date['date_min']
             if fetching_date['date_max'] > (from_date + relativedelta(years = 5)):
