@@ -137,7 +137,8 @@ def return_fetching_dates(base_currency, starting_date, connection, table, time_
 # get request
 #----------------------------------------
 def get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list, max_retries=6, attempt=1):
-    response = requests.get(base_url + f'&from={from_date}' + f'&to={to_date}' + f'&base={base_currency}' + f'&quotes={quote_currencies}' + group, headers=headers, stream=True, timeout=(10, 60))
+    url = base_url + f'&from={from_date}' + f'&to={to_date}' + f'&base={base_currency}' + f'&quotes={quote_currencies}' + group
+    response = requests.get(url, headers=headers, stream=True, timeout=(10, 60))
     if response.status_code == 200:
         if from_date == to_date:
             logging.info(f"Gathering data for {base_currency} as base currency for {from_date}...")
@@ -149,31 +150,28 @@ def get_data(base_url, from_date, to_date, base_currency, quote_currencies, grou
                 renamed_data = {mapping[key]: value for key, value in data.items()}
                 renamed_data['created_at'] = timestamp
                 items_list.append(renamed_data)
+        response.close()
         return items_list
-    elif response.status_code == 429:
+    retry_errors = (408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524)
+    if response.status_code in retry_errors:
         if attempt > max_retries:
             response.close()
-            raise Exception(f"Request failed after {max_retries} retries with HTTP response status code: {response.status_code}")
-        wait = response.headers.get("Retry-After")
-        response.close()
-        if wait:
-            time.sleep(int(wait))
+            raise Exception(f"Request failed after {max_retries} retries. Status code: {response.status_code}")
+        if response.status_code == 429:
+            wait = response.headers.get("Retry-After")
+            if wait:
+                wait = int(wait)
+            else:
+                wait = delay
         else:
-            time.sleep(delay)
-            delay = min((delay * 2), 60)
-        return get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list, max_retries, attempt + 1)
-    elif response.status_code in (408, 500, 502, 503, 504, 520, 521, 522, 523, 524):
-        if attempt > max_retries:
-            response.close()
-            raise Exception(f"Request failed after {max_retries} retries with HTTP response status code: {response.status_code}")
-        logging.warning(f"Transient error {response.status_code} for {base_currency} between {from_date} and {to_date}, retrying in {delay}s (attempt {attempt}/{max_retries})...")
+            wait = delay
+        logging.warning(f"Temporary error {response.status_code} for {base_currency} between {from_date} and {to_date}. Retrying in {wait}s ({attempt}/{max_retries})...")
         response.close()
-        time.sleep(delay)
-        delay = min((delay * 2), 60)
+        time.sleep(wait)
+        delay = min(delay * 2, 60)
         return get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list, max_retries, attempt + 1)
-    else:
-         response.close()
-         raise Exception(f"Request failed with HTTP response status code: {response.status_code}")
+    response.close()
+    raise Exception(f"Request failed with HTTP response status code: {response.status_code}")
 #----------------------------------------
 # main logic
 #----------------------------------------
