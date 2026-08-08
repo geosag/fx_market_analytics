@@ -71,69 +71,6 @@ def clean_data(df_raw, base_currency, quote_currencies_list):
     else:
         raise Exception(f"Invalid data: {df_raw}")
 #----------------------------------------
-# Define and return which dates are to be requested
-#----------------------------------------
-def return_fetching_dates(base_currency, starting_date, connection, table, time_interval):
-    logging.info('Defining fetching dates...')
-    quote_currencies_list = []
-    for i in range(len(valid_currencies)):
-        if not valid_currencies[i] == base_currency:
-            quote_currencies_list.append(valid_currencies[i]) # quote currencies are all the other values left in the list besides current base currency
-    result = query_db(text(f"""
-			                   SELECT CASE 
-                                         WHEN MIN(date_recorded) = MAX(date_recorded) AND :time_interval = '1 month' 
-                                           THEN (DATE_TRUNC('month', MIN(date_recorded)) - INTERVAL '1 month')::DATE
-                                         ELSE MIN(date_recorded)
-                                      END AS date_min,
-                                      MAX(date_recorded) AS date_max
-                                 FROM (
-                                       SELECT x.*, SUM(i) OVER(ORDER BY date_recorded) AS grp
-                                         FROM (
-                                               SELECT t.*,
-                                                      CASE WHEN date_recorded > LAG(date_recorded) OVER(order BY date_recorded) + INTERVAL :time_interval
-                                                             THEN 1 
-                                                           ELSE 0 
-                                                      END AS i
-                                                    FROM (
-                                                          SELECT DATE(dates_recorded) AS date_recorded
-                                                            FROM generate_series(:starting_date, CURRENT_DATE, INTERVAL :time_interval) AS dates_recorded
-                                                           WHERE dates_recorded NOT IN (
-                                                                                        SELECT date_recorded
-                                                                                          FROM {table}
-                                                                                         WHERE base_currency = :base_currency
-                                                                                           AND quote_currency IN :quote_currencies_list
-                                                                                      GROUP BY date_recorded
-                                                                                        HAVING COUNT(*) = 4)) AS t
-                                              ) AS x
-                                      ) AS y
-                             GROUP BY grp
-                             ORDER BY date_min;
-                            """).bindparams(bindparam('quote_currencies_list', expanding = True)),
-                      {"starting_date": starting_date, "time_interval": time_interval, "base_currency": base_currency, "quote_currencies_list": quote_currencies_list}, connection)
-    rows = result.fetchall()
-    fetching_dates = []
-    if len(rows) > 0:
-        for row in rows:
-            if row[0] and row[1]:
-                retrieved_date_min = row[0]
-                retrieved_date_max = row[1]
-                dates = {
-                         'date_min': retrieved_date_min,
-                         'date_max': retrieved_date_max
-                        }
-                fetching_dates.append(dates)
-            else:
-                raise Exception(f'Invalid dates retrieved: {row[0], row[1]}')
-    else:
-        date_min = date.today() - relativedelta(months = 6)
-        dates = {
-                 'date_min': date(date_min.year, date_min.month, 1),
-                 'date_max': date.today()
-                }
-        fetching_dates.append(dates)
-    logging.info('Fetching dates successfully defined and returned')
-    return fetching_dates, quote_currencies_list
-#----------------------------------------
 # get request
 #----------------------------------------
 def get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list, max_retries=6, attempt=1):
@@ -179,81 +116,75 @@ def main(connection):
     global data_type
     total_rows = 0
     logging.info(f'Process started for {data_type} data!')
-    # define in which table the changes will be applied based on if it's historical data or not 
+    # define in which table the changes will be applied
     table = f'currencies_{data_type}_data'
-    # condition to return the proper dates that are to be requested to fill the relevant data tables for the currencies
+    # delete everything from the table and fetch fresh
+    query_db(text(f"DELETE FROM {table};"), {}, connection)
+    # define dates and group based on data type
     if data_type == 'monthly':
         starting_date = date(1999, 1, 1)
         group = "&group=month"
-        time_interval = '1 month'
+    elif data_type == 'weekly':
+        starting_date = date.today() - relativedelta(years = 5)
+        group = "&group=week"
     else:
-        # delete everything from daily or weekly data and fetch fresh
-        query_db(text(f"DELETE FROM {table};"), {}, connection)
-        starting_date = date.today() - relativedelta(years = 5) # starting_date = current date - 5 years
-        if data_type == 'weekly':
-            group = "&group=week"
-            time_interval = '1 week'
-        else:
-            group = ""
-            time_interval = '1 day'
+        starting_date = date.today() - relativedelta(years = 5)
+        group = ""
     for i, currency in enumerate(valid_currencies):
-        rows_inserted = 0 # rows to be inserted in the current iteration
-        base_currency = currency # define current base currency
-        quote_currencies = ','.join(valid_currencies[:i] + valid_currencies[(i + 1):]) # modify valid_currencies to be used as a variable in the upcoming get request
-        fetching_dates, quote_currencies_list = return_fetching_dates(base_currency, starting_date, connection, table, time_interval)
-        for fetching_date in fetching_dates:
-            from_date = fetching_date['date_min']
-            if fetching_date['date_max'] > (from_date + relativedelta(years = 5)):
-                to_date = from_date + relativedelta(years = 5)
+        base_currency = currency
+        # define quote currencies
+        quote_currencies = ','.join(valid_currencies[:i] + valid_currencies[(i + 1):]) # to be used in the upcoming get request
+        quote_currencies_list = [] # to be used in the clean_data function
+        for currency in valid_currencies:
+            if currency != base_currency:
+                quote_currencies_list.append(currency)
+        # define the dates to fetch
+        from_date = starting_date
+        to_date = date.today()
+        items_list = []
+        data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
+        if len(data) > 0:
+            # using pandas to clean and validate data before inserting data to table
+            df_raw = pd.DataFrame(data)
+            df_clean = clean_data(df_raw, base_currency, quote_currencies_list)
+            if from_date == to_date:
+                logging.info(f"Inserting data for {from_date}...")
             else:
-                to_date = fetching_date['date_max']
-            while True:
-                items_list = []
-                data = get_data(base_url, from_date, to_date, base_currency, quote_currencies, group, headers, mapping, delay, items_list)
-                if len(data) > 0:
-                    # delete possible gaps in the dates of the data or dates the have < 4 quote currencies inserted per base currency
-                    query_db(text(f"DELETE FROM {table} WHERE base_currency = :base_currency AND date_recorded BETWEEN :retrieved_date_min AND :retrieved_date_max;"),
-                             {"base_currency": base_currency, "retrieved_date_min": from_date, "retrieved_date_max": to_date}, connection)
-                    # using pandas to clean and validate data before inserting the data to table
-                    df_raw = pd.DataFrame(data)
-                    df_clean = clean_data(df_raw, base_currency, quote_currencies_list)
-                    if from_date == to_date:
-                        logging.info(f"Inserting data for {from_date}...")
-                    else:
-                        logging.info(f"Inserting data between {from_date} and {to_date}...")
-                    df_clean.to_sql(f"{table}", con=connection, if_exists="append", index=False, method = "multi")
-                    # if data comes from the last 5 years range delete the dates on the table that are now > 5 years
-                    if data_type != 'monthly':
-                        year_interval = "'5 years'"
-                        day_interval = "'1 day'"
-                        result = query_db(text(f"SELECT MAX(date_recorded) FROM {table} WHERE date_recorded < (SELECT DATE(MAX(date_recorded) - INTERVAL :year_interval) FROM {table});"),
-                                          {"year_interval": year_interval, "day_interval": day_interval}, connection)
-                        row = result.fetchone()
-                        if row[0]:
-                            last_date = row[0]
-                            logging.info(f"Rows with dates more than 5 years old (<= {last_date}) have been spotted for {base_currency} as base currency! Initiating deletion of these rows...")
-                            query_db(text(f"DELETE FROM {table} WHERE base_currency = :base_currency AND date_recorded <= :last_date;"),
-                                     {"base_currency": base_currency, "last_date": last_date}, connection)
-                            logging.info(f"Rows with dates from {last_date} and before have been deleted successfully for {base_currency} as base currency")
-                        # logging of the number of rows that were inserted for the current base currency
-                    logging.info(f'{len(df_clean)} rows were inserted for {base_currency} as base currency!')
-                    total_rows += len(df_clean)
-                else:
-                    if from_date == to_date:
-                        logging.info(f"There is no data for {from_date}.")
-                    else:
-                        logging.info(f"There is no data for the dates between {from_date} and {to_date}.")
-                if data_type == 'monthly': # from and to dates are updated for monthly data > 5 years 
-                    if fetching_date['date_max'] > to_date:
-                        from_date = to_date + relativedelta(months = 1)
-                        if fetching_date['date_max'] > (from_date + relativedelta(years = 5)):
-                            to_date += relativedelta(years = 5)
-                        else:
-                            to_date = fetching_date['date_max']
-                    else:
-                        break
-                else:
-                    break
+                logging.info(f"Inserting data between {from_date} and {to_date}...")
+            df_clean.to_sql(f"{table}", con=connection, if_exists="append", index=False, method="multi")
+            # delete rows older than 5 years for daily and weekly data, if they exist
+            if data_type != 'monthly':
+                last_date = date.today() - relativedelta(years = 5)
+                result = query_db(
+                    text(f"""
+                            SELECT MAX(date_recorded)
+                            FROM {table}
+                            WHERE base_currency = :base_currency
+                            AND date_recorded < :last_date;
+                    """),
+                    {"base_currency": base_currency, "last_date": last_date},
+                    connection
+                )
+                row = result.fetchone()
+                if row[0]:
+                    logging.info(f"Rows before {last_date} were found for {base_currency} as base currency. Deleting them...")
+                    query_db(
+                        text(f"""
+                                DELETE FROM {table}
+                                WHERE base_currency = :base_currency
+                                AND date_recorded < :last_date;
+                        """),
+                        {"base_currency": base_currency, "last_date": last_date},
+                        connection
+                    )
+                    logging.info(f"Rows before {last_date} have been deleted for {base_currency} as base currency.")
+            logging.info(f'{len(df_clean)} rows were inserted for {base_currency} as base currency!')
+            total_rows += len(df_clean)
+        else:
+            if from_date == to_date:
+                logging.info(f"There is no data for {from_date}.")
+            else:
+                logging.info(f"There is no data for the dates between {from_date} and {to_date}.")
     logging.info(f'Process ended for currency {data_type} data! Total rows inserted: {total_rows}.')
     if data_type != 'monthly':
         if data_type == 'daily':
@@ -261,7 +192,7 @@ def main(connection):
         else:
             data_type = 'monthly'
         return main(connection)
-    return    
+    return
 #----------------------------------------
 #########################################
 #----------------------------------------
